@@ -1,0 +1,17 @@
+{
+  "name": "eventswidget-tests",
+  "version": "1.0.0",
+  "description": "Playwright tests for Events Widget page",
+  "type": "commonjs",
+  "scripts": {
+    "test": "npx playwright test",
+    "ui": "npx playwright test --ui",
+    "report": "npx playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^24.10.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
