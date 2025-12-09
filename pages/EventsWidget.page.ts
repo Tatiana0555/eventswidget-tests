@@ -1,4 +1,18 @@
-import { Page, Locator } from '@playwright/test';
+import { Page, Locator, expect } from '@playwright/test';
+
+// Константы для селекторов
+const SELECTORS = {
+  OVERLAY: '.checkselect-over',
+  THEME_CHECKBOX: 'input[type="checkbox"][name="type"]',
+  SELECTED_THEME: '.checkselect-selected, [class*="selected"], [class*="checked"]',
+} as const;
+
+// Константы для таймаутов
+const TIMEOUTS = {
+  DROPDOWN_OPEN: 2000,
+  ELEMENT_ACTION: 1000,
+  PREVIEW_GENERATION: 5000,
+} as const;
 
 export class EventsWidgetPage {
   readonly page: Page;
@@ -60,13 +74,13 @@ export class EventsWidgetPage {
     this.fullWidthCheckbox = page.locator('text=/на всю ширину контейнера/i').locator('..').locator('input[type="checkbox"]').first();
     // Чекбокс "на всю высоту блока"
     this.fullHeightCheckbox = page.locator('text=/на всю высоту блока/i').locator('..').locator('input[type="checkbox"]').first();
-    
-    // Шаг 4: Цветовая гамма (радиокнопки могут быть скрыты, используем value или клик по label)
+        
+    // Шаг 4: Цветовая гамма
     this.step4Section = page.locator('text=/Шаг 4/i').first();
-    // Используем поиск по value или name атрибуту
-    this.lightThemeRadio = page.locator('input[type="radio"][name*="theme" i], input[type="radio"][value*="blue" i], input[type="radio"][value*="light" i]').first();
-    this.darkThemeRadio = page.locator('input[type="radio"][name*="theme" i], input[type="radio"][value*="dark" i]').first();
-    
+    // Ищем label с текстом и берём связанный input[type="radio"]
+    this.lightThemeRadio = page.locator('text=/Светлая тема/i').locator('..').locator('input[type="radio"], label input[type="radio"]').first();
+    this.darkThemeRadio = page.locator('text=/Темная тема/i').locator('..').locator('input[type="radio"], label input[type="radio"]').first();
+
     // Кнопки действий
     this.generatePreviewButton = page.locator('button:has-text("Сгенерировать превью")');
     this.copyCodeButton = page.locator('button:has-text("Скопировать код")');
@@ -78,387 +92,332 @@ export class EventsWidgetPage {
   async open() {
     await this.page.goto('/eventswidget/');
     await this.page.waitForLoadState('networkidle');
+    // Ожидаем появления основного заголовка для подтверждения загрузки
+    await this.mainHeading.waitFor({ state: 'visible', timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
   async isLoaded(): Promise<boolean> {
     return this.page.url().includes('eventswidget');
   }
 
-  // Методы для работы с тематикой (Шаг 1) - используем combobox/select
-  async selectTheme(themeName: string) {
-    // Кликаем по overlay элементу, который перехватывает события
-    const overlay = this.page.locator('.checkselect-over').first();
+  // Приватные вспомогательные методы
+  private async openComboboxOverlay(overlayIndex: number = 0): Promise<void> {
+    const overlays = this.page.locator(SELECTORS.OVERLAY);
+    const overlay = overlayIndex === 0 ? overlays.first() : overlays.nth(overlayIndex);
+    
     if (await overlay.count() > 0) {
       await overlay.click();
+      // Ожидаем открытия выпадающего списка
+      await overlay.waitFor({ state: 'visible', timeout: TIMEOUTS.DROPDOWN_OPEN });
     } else {
-      // Если overlay нет, кликаем по самому select
-      await this.themeCombobox.click({ force: true });
+      // Fallback: кликаем по самому combobox
+      const combobox = overlayIndex === 0 ? this.themeCombobox : this.countryCombobox;
+      await combobox.click({ force: true });
     }
-    await this.page.waitForTimeout(500); // Даем время на открытие выпадающего списка
-    
-    // Ищем опцию по тексту в выпадающем списке
-    // Элемент может быть невидимым (в выпадающем списке), поэтому используем force
-    const textOption = this.page.locator(`text=/^${themeName}$/i`).first();
-    const labelOption = this.page.locator(`label:has-text("${themeName}")`).first();
-    
-    // Сначала пробуем найти чекбокс - он может быть в разных местах относительно текста
-    // Вариант 1: чекбокс внутри элемента с текстом
-    const checkboxInOption = textOption.locator('input[type="checkbox"]').first();
-    // Вариант 2: чекбокс в родительском элементе
-    const checkboxInParent = textOption.locator('..').locator('input[type="checkbox"]').first();
-    // Вариант 3: чекбокс в том же контейнере (ищем по соседству)
-    const checkboxSibling = textOption.locator('../..').locator('input[type="checkbox"]').first();
-    
-    // Проверяем наличие и кликаем с force (все чекбоксы могут быть невидимыми)
-    // Используем try-catch для каждого варианта, так как элемент может быть найден, но недоступен
-    let success = false;
-    
-    // Вариант 1: чекбокс внутри элемента
-    if (!success && await checkboxInOption.count() > 0) {
-      try {
-        await checkboxInOption.check({ force: true, timeout: 2000 });
-        success = true;
-      } catch (e) {
-        // Продолжаем поиск
-      }
-    }
-    
-    // Вариант 2: чекбокс в родителе
-    if (!success && await checkboxInParent.count() > 0) {
-      try {
-        await checkboxInParent.check({ force: true, timeout: 2000 });
-        success = true;
-      } catch (e) {
-        // Продолжаем поиск
-      }
-    }
-    
-    // Вариант 3: чекбокс в соседнем элементе
-    if (!success && await checkboxSibling.count() > 0) {
-      try {
-        await checkboxSibling.check({ force: true, timeout: 2000 });
-        success = true;
-      } catch (e) {
-        // Продолжаем поиск
-      }
-    }
-    
-    // Вариант 4: клик по тексту (может быть ссылка)
-    if (!success && await textOption.count() > 0) {
-      try {
-        await textOption.click({ force: true, timeout: 2000 });
-        success = true;
-      } catch (e) {
-        // Продолжаем поиск
-      }
-    }
-    
-    // Вариант 5: клик по label
-    if (!success && await labelOption.count() > 0) {
-      try {
-        await labelOption.click({ force: true, timeout: 2000 });
-        success = true;
-      } catch (e) {
-        // Продолжаем поиск
-      }
-    }
-    
-    // Последняя попытка - найти чекбокс через поиск по всему документу
-    if (!success) {
-      const allCheckboxes = this.page.locator('input[type="checkbox"][name="type"]');
-      const checkboxCount = await allCheckboxes.count();
-      for (let i = 0; i < checkboxCount; i++) {
+  }
+
+  private async findAndClickOption(optionText: string | RegExp, options: { force?: boolean } = {}): Promise<boolean> {
+    const textPattern = typeof optionText === 'string' ? new RegExp(optionText, 'i') : optionText;
+    const locators = [
+      this.page.locator(`text=${textPattern}`).first(),
+      this.page.locator(`label:has-text("${typeof optionText === 'string' ? optionText : ''}")`).first(),
+    ];
+
+    for (const locator of locators) {
+      if (await locator.count() > 0) {
         try {
-          const checkbox = allCheckboxes.nth(i);
-          // Проверяем, есть ли рядом текст с нужным названием
-          const container = checkbox.locator('..');
-          const text = await container.textContent();
-          if (text && new RegExp(themeName, 'i').test(text)) {
-            await checkbox.check({ force: true, timeout: 2000 });
+          await locator.click({ force: options.force, timeout: TIMEOUTS.ELEMENT_ACTION });
+          return true;
+        } catch {
+          continue;
+        }
+      }
+    }
+    return false;
+  }
+
+  //Методы для работы с тематикой (Шаг 1) - используем combobox/select
+  async selectTheme(themeName: string): Promise<void> {
+    await this.openComboboxOverlay(0);
+    
+    // Ищем опцию по тексту
+    const textOption = this.page.locator(`text=/^${themeName}$/i`).first();
+    
+    // Пробуем найти и кликнуть чекбокс рядом с текстом
+    const checkboxLocators = [
+      textOption.locator('input[type="checkbox"]').first(),
+      textOption.locator('..').locator('input[type="checkbox"]').first(),
+      textOption.locator('../..').locator('input[type="checkbox"]').first(),
+    ];
+
+    let success = false;
+    for (const checkboxLocator of checkboxLocators) {
+      if (await checkboxLocator.count() > 0) {
+        try {
+          await checkboxLocator.check({ force: true, timeout: TIMEOUTS.ELEMENT_ACTION });
+          success = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    // Если чекбокс не найден, пробуем кликнуть по тексту или label
+    if (!success) {
+      success = await this.findAndClickOption(themeName, { force: true });
+    }
+
+        // Последняя попытка - поиск по всем чекбоксам
+    if (!success) {
+      const allCheckboxes = this.page.locator(SELECTORS.THEME_CHECKBOX);
+      const count = await allCheckboxes.count();
+      
+      for (let i = 0; i < count; i++) {        
+        const checkbox = allCheckboxes.nth(i);
+        try {
+          const containerText = (await checkbox.locator('..').textContent()) || '';
+          if (new RegExp(themeName, 'i').test(containerText)) {
+            // Если видим — чекним обычно
+            if (await checkbox.isVisible()) {
+              await checkbox.check({ force: true, timeout: TIMEOUTS.ELEMENT_ACTION });
+            } else {
+              // Если скрыт — устанавливаем checked через evaluate
+              const handle = await checkbox.elementHandle();
+              if (handle) {
+                await this.page.evaluate((el: any) => {
+                  const input = el as any;
+                  input.checked = true;
+                  input.dispatchEvent(new Event('input', { bubbles: true }));
+                  input.dispatchEvent(new Event('change', { bubbles: true }));
+                }, handle);
+              }
+            }
             success = true;
             break;
           }
-        } catch (e) {
-          // Продолжаем поиск
+        } catch {
+          continue;
         }
       }
     }
-    await this.page.waitForTimeout(300);
+
+    if (!success) {
+      throw new Error(`Не удалось выбрать тематику "${themeName}"`);
+    }
+
+    // Ожидаем обновления состояния
+    await this.themeCombobox.waitFor({ state: 'visible', timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
-  async selectAllThemes() {
-    // Кликаем по overlay для открытия списка
-    const overlay = this.page.locator('.checkselect-over').first();
-    if (await overlay.count() > 0) {
-      await overlay.click();
-    } else {
-      await this.themeCombobox.click({ force: true });
-    }
-    await this.page.waitForTimeout(500);
+  async selectAllThemes(): Promise<void> {
+    await this.openComboboxOverlay(0);
     
-    // Ищем опцию "Выбрать все" или "Все" (используем отдельные локаторы)
-    const selectAll1 = this.page.locator('text=/Выбрать все/i').first();
-    const selectAll2 = this.page.locator('text=/^Все$/i').first();
-    const selectAll3 = this.page.locator('label:has-text("Выбрать все")').first();
+    // Ищем опцию "Выбрать все" или "Все"
+    const success = await this.findAndClickOption(/Выбрать все|^Все$/i);
     
-    if (await selectAll1.count() > 0) {
-      await selectAll1.click();
-    } else if (await selectAll2.count() > 0) {
-      await selectAll2.click();
-    } else if (await selectAll3.count() > 0) {
-      await selectAll3.click();
+    if (!success) {
+      throw new Error('Не удалось найти опцию "Выбрать все"');
     }
-    await this.page.waitForTimeout(300);
+
+    await this.themeCombobox.waitFor({ state: 'visible', timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
-  async clearThemes() {
-    // Кликаем по overlay
-    const overlay = this.page.locator('.checkselect-over').first();
-    if (await overlay.count() > 0) {
-      await overlay.click();
-    }
-    await this.page.waitForTimeout(500);
+  async clearThemes(): Promise<void> {
+    await this.openComboboxOverlay(0);
     
-    // Ищем опцию "Очистить" (используем отдельные локаторы)
-    const clearOption1 = this.page.locator('text=/Очистить/i').first();
-    const clearOption2 = this.page.locator('label:has-text("Очистить")').first();
+    const success = await this.findAndClickOption(/Очистить/i);
     
-    if (await clearOption1.count() > 0) {
-      await clearOption1.click();
-    } else if (await clearOption2.count() > 0) {
-      await clearOption2.click();
+    if (!success) {
+      throw new Error('Не удалось найти опцию "Очистить"');
     }
-    await this.page.waitForTimeout(300);
+
+    await this.themeCombobox.waitFor({ state: 'visible', timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
   async isThemeSelected(themeName: string): Promise<boolean> {
-    // Для кастомного combobox проверяем несколькими способами
+    const themePattern = new RegExp(themeName, 'i');
     
-    // Способ 1: Проверяем видимый текст в самом combobox (после выбора там должен отображаться выбранный элемент)
+    // Способ 1: Проверяем видимый текст в combobox
     try {
-      const comboboxText = await this.themeCombobox.textContent();
-      if (comboboxText && new RegExp(themeName, 'i').test(comboboxText)) {
+      const comboboxText = await this.themeCombobox.textContent({ timeout: TIMEOUTS.ELEMENT_ACTION });
+      if (comboboxText && themePattern.test(comboboxText)) {
         return true;
       }
-    } catch (e) {
+    } catch {
       // Продолжаем
     }
     
-    // Способ 2: Ищем чекбокс и проверяем его состояние
-    // Ищем все чекбоксы с name="type" и проверяем, есть ли рядом нужный текст
-    const allCheckboxes = this.page.locator('input[type="checkbox"][name="type"]');
-    const checkboxCount = await allCheckboxes.count();
-    
-    for (let i = 0; i < checkboxCount; i++) {
-      try {
-        const checkbox = allCheckboxes.nth(i);
-        const isChecked = await checkbox.isChecked({ timeout: 1000 });
-        if (isChecked) {
-          // Проверяем, есть ли рядом текст с нужным названием
-          // Проверяем в родительском элементе и его родителе
-          const container = checkbox.locator('..');
-          const text = await container.textContent();
-          if (text && new RegExp(themeName, 'i').test(text)) {
-            return true;
-          }
-          // Проверяем в родителе родителя
-          const parentContainer = container.locator('..');
-          const parentText = await parentContainer.textContent();
-          if (parentText && new RegExp(themeName, 'i').test(parentText)) {
-            return true;
-          }
-        }
-      } catch (e) {
-        // Продолжаем поиск
-      }
-    }
-    
-    // Способ 3: Проверяем через текст в выбранных элементах combobox
-    const selectedText = this.page.locator('.checkselect-selected, [class*="selected"], [class*="checked"]').filter({
-      hasText: new RegExp(themeName, 'i')
+    // Способ 2: Проверяем через выбранные элементы
+    const selectedText = this.page.locator(SELECTORS.SELECTED_THEME).filter({
+      hasText: themePattern
     }).first();
     
     if (await selectedText.count() > 0) {
       return true;
     }
     
+    // Способ 3: Ищем чекбокс и проверяем его состояние
+    const allCheckboxes = this.page.locator(SELECTORS.THEME_CHECKBOX);
+    const count = await allCheckboxes.count();
+    
+    for (let i = 0; i < count; i++) {
+      try {
+        const checkbox = allCheckboxes.nth(i);
+        const isChecked = await checkbox.isChecked({ timeout: TIMEOUTS.ELEMENT_ACTION });
+        
+        if (isChecked) {
+          // Проверяем текст в родительских элементах
+          const container = checkbox.locator('..');
+          const text = await container.textContent();
+          
+          if (text && themePattern.test(text)) {
+            return true;
+          }
+          
+          // Проверяем в родителе родителя
+          const parentText = await container.locator('..').textContent();
+          if (parentText && themePattern.test(parentText)) {
+            return true;
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
+    
     // Способ 4: Проверяем значение select (если это стандартный select)
     try {
-      const selectedValue = await this.themeCombobox.inputValue();
+      const selectedValue = await this.themeCombobox.inputValue({ timeout: TIMEOUTS.ELEMENT_ACTION });
       if (selectedValue && selectedValue.toLowerCase().includes(themeName.toLowerCase())) {
         return true;
       }
-    } catch (e) {
+    } catch {
       // Не стандартный select
-    }
-    
-    // Способ 5: Открываем combobox и проверяем напрямую
-    try {
-      const overlay = this.page.locator('.checkselect-over').first();
-      if (await overlay.count() > 0) {
-        const wasOpen = await overlay.isVisible();
-        if (!wasOpen) {
-          await overlay.click();
-          await this.page.waitForTimeout(300);
-        }
-        
-        const textElement = this.page.locator(`text=/^${themeName}$/i`).first();
-        if (await textElement.count() > 0) {
-          // Проверяем, есть ли рядом чекбокс и отмечен ли он
-          const nearbyCheckbox = textElement.locator('..').locator('input[type="checkbox"]').first();
-          if (await nearbyCheckbox.count() > 0) {
-            const checked = await nearbyCheckbox.isChecked();
-            // Закрываем combobox только если мы его открыли
-            if (!wasOpen) {
-              await overlay.click();
-            }
-            return checked;
-          }
-        }
-        // Закрываем combobox только если мы его открыли
-        if (!wasOpen) {
-          await overlay.click();
-        }
-      }
-    } catch (e) {
-      // Игнорируем ошибки
     }
     
     return false;
   }
 
   // Методы для работы со странами (Шаг 2) - используем combobox/select
-  async selectAllCountries() {
-    // Для select элементов используем selectOption вместо клика
-    // Пробуем использовать стандартный метод selectOption со строкой
+  async selectAllCountries(): Promise<void> {
+    // Пробуем использовать стандартный метод selectOption
     try {
       await this.countryCombobox.selectOption({ label: 'Все страны' });
+      return;
     } catch {
-      // Если это кастомный combobox, открываем его через overlay
-      const overlays = this.page.locator('.checkselect-over');
-      const countryOverlay = overlays.nth(1); // Второй overlay для стран
-      
-      if (await countryOverlay.count() > 0) {
-        await countryOverlay.click();
-      } else {
-        await this.countryCombobox.click({ force: true });
-      }
-      await this.page.waitForTimeout(500);
-      
-      // Ищем опцию "Все страны" или "Выбрать все" и кликаем с force
-      const allOption1 = this.page.locator('text=/Все страны/i').first();
-      const allOption2 = this.page.locator('text=/Выбрать все/i').first();
-      const allOption3 = this.page.locator('label:has-text("Все страны")').first();
-      
-      if (await allOption1.count() > 0) {
-        await allOption1.click({ force: true });
-      } else if (await allOption2.count() > 0) {
-        await allOption2.click({ force: true });
-      } else if (await allOption3.count() > 0) {
-        await allOption3.click({ force: true });
-      }
+      // Если это кастомный combobox, используем overlay
     }
-    await this.page.waitForTimeout(300);
+    
+    await this.openComboboxOverlay(1);
+    
+    const success = await this.findAndClickOption(/Все страны|Выбрать все/i, { force: true });
+    
+    if (!success) {
+      throw new Error('Не удалось найти опцию "Все страны"');
+    }
+
+    await this.countryCombobox.waitFor({ state: 'visible', timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
-  async clearCountries() {
-    // Пробуем использовать selectOption для сброса
+  async clearCountries(): Promise<void> {
+    // Пробуем использовать стандартный метод selectOption
     try {
       await this.countryCombobox.selectOption({ index: 0 });
+      return;
     } catch {
-      // Если это кастомный combobox, открываем через overlay
-      const overlays = this.page.locator('.checkselect-over');
-      const countryOverlay = overlays.nth(1);
-      
-      if (await countryOverlay.count() > 0) {
-        await countryOverlay.click();
-      }
-      await this.page.waitForTimeout(500);
-      
-      // Ищем опцию "Очистить" и кликаем с force
-      const clearOption1 = this.page.locator('text=/Очистить/i').first();
-      const clearOption2 = this.page.locator('label:has-text("Очистить")').first();
-      
-      if (await clearOption1.count() > 0) {
-        await clearOption1.click({ force: true });
-      } else if (await clearOption2.count() > 0) {
-        await clearOption2.click({ force: true });
-      }
+      // Если это кастомный combobox, используем overlay
     }
-    await this.page.waitForTimeout(300);
+    
+    await this.openComboboxOverlay(1);
+    
+    const success = await this.findAndClickOption(/Очистить/i, { force: true });
+    
+    if (!success) {
+      throw new Error('Не удалось найти опцию "Очистить"');
+    }
+
+    await this.countryCombobox.waitFor({ state: 'visible', timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
   // Методы для работы с размером (Шаг 3)
-  async setWidth(width: number) {
+  async setWidth(width: number): Promise<void> {
     await this.widthInput.fill(width.toString());
+    // Ожидаем обновления значения
+    await expect(this.widthInput).toHaveValue(width.toString(), { timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
-  async setHeight(height: number) {
+  async setHeight(height: number): Promise<void> {
     await this.heightInput.fill(height.toString());
+    // Ожидаем обновления значения
+    await expect(this.heightInput).toHaveValue(height.toString(), { timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
-  async setFullWidth(enabled: boolean) {
-    // Чекбокс скрыт, используем force или кликаем по label
-    const label = this.page.locator('text=/на всю ширину контейнера/i').first();
+  private async toggleCheckboxByLabel(labelText: RegExp, checkbox: Locator, enabled: boolean): Promise<void> {
+    const label = this.page.locator(`text=${labelText}`).first();
+    
     if (await label.count() > 0) {
-      await label.click();
+      const currentState = await checkbox.isChecked().catch(() => false);
+      if (currentState !== enabled) {
+        await label.click();
+      }
     } else {
       if (enabled) {
-        await this.fullWidthCheckbox.check({ force: true });
+        await checkbox.check({ force: true });
       } else {
-        await this.fullWidthCheckbox.uncheck({ force: true });
+        await checkbox.uncheck({ force: true });
       }
+    }
+    
+    // Ожидаем изменения состояния
+    if (enabled) {
+      await expect(checkbox).toBeChecked({ timeout: TIMEOUTS.ELEMENT_ACTION });
+    } else {
+      await expect(checkbox).not.toBeChecked({ timeout: TIMEOUTS.ELEMENT_ACTION });
     }
   }
 
-  async setFullHeight(enabled: boolean) {
-    const label = this.page.locator('text=/на всю высоту блока/i').first();
-    if (await label.count() > 0) {
-      await label.click();
-    } else {
-      if (enabled) {
-        await this.fullHeightCheckbox.check({ force: true });
-      } else {
-        await this.fullHeightCheckbox.uncheck({ force: true });
-      }
-    }
+  async setFullWidth(enabled: boolean): Promise<void> {
+    await this.toggleCheckboxByLabel(/на всю ширину контейнера/i, this.fullWidthCheckbox, enabled);
+  }
+
+  async setFullHeight(enabled: boolean): Promise<void> {
+    await this.toggleCheckboxByLabel(/на всю высоту блока/i, this.fullHeightCheckbox, enabled);
   }
 
   // Методы для работы с цветовой гаммой (Шаг 4)
-  async selectLightTheme() {
-    // Ищем радиокнопку по value или name, затем кликаем по label
-    // Сначала пробуем найти label рядом с текстом "Светлая тема:"
-    const label = this.page.locator('text=/Светлая тема:/i').locator('..').locator('label, input[type="radio"]').first();
+  private async selectThemeByLabel(labelText: RegExp, radioButton: Locator): Promise<void> {
+    const label = this.page.locator(`text=${labelText}`).locator('..').locator('label, input[type="radio"]').first();
+    
     if (await label.count() > 0) {
       await label.click();
     } else {
-      // Если не нашли label, используем force для радиокнопки
-      await this.lightThemeRadio.check({ force: true });
+      await radioButton.check({ force: true });
     }
-    await this.page.waitForTimeout(200);
+    
+    // Ожидаем изменения состояния
+    await expect(radioButton).toBeChecked({ timeout: TIMEOUTS.ELEMENT_ACTION });
   }
 
-  async selectDarkTheme() {
-    const label = this.page.locator('text=/Темная тема:/i').locator('..').locator('label, input[type="radio"]').first();
-    if (await label.count() > 0) {
-      await label.click();
-    } else {
-      await this.darkThemeRadio.check({ force: true });
-    }
-    await this.page.waitForTimeout(200);
+  async selectLightTheme(): Promise<void> {
+    await this.selectThemeByLabel(/Светлая тема:/i, this.lightThemeRadio);
+  }
+
+  async selectDarkTheme(): Promise<void> {
+    await this.selectThemeByLabel(/Темная тема:/i, this.darkThemeRadio);
   }
 
   // Методы для действий
-  async generatePreview() {
+  async generatePreview(): Promise<void> {
     await this.generatePreviewButton.click();
-    await this.page.waitForTimeout(1000); // Даем время на генерацию
+    // Ожидаем появления сгенерированного кода вместо фиксированного таймаута
+    await this.generatedCode.waitFor({ state: 'visible', timeout: TIMEOUTS.PREVIEW_GENERATION });
   }
 
-  async copyCode() {
+  async copyCode(): Promise<void> {
     // Обрабатываем диалог разрешения на доступ к clipboard, если он появится
     const dialogPromise = this.page.waitForEvent('dialog', { timeout: 2000 }).catch(() => null);
     
-    // Кликаем по кнопке копирования
     await this.copyCodeButton.click();
     
     // Если появился диалог, принимаем разрешение
@@ -467,18 +426,20 @@ export class EventsWidgetPage {
       await dialog.accept();
     }
     
-    // Даем время на обработку
-    await this.page.waitForTimeout(500);
+    // Ожидаем завершения операции копирования
+    await this.page.waitForTimeout(500); // Clipboard API не имеет события завершения
   }
 
   async getGeneratedCode(): Promise<string> {
     const codeElement = this.generatedCode.first();
+    
     // Пробуем получить значение разными способами в зависимости от типа элемента
     try {
-      return await codeElement.inputValue();
+      return await codeElement.inputValue({ timeout: TIMEOUTS.ELEMENT_ACTION });
     } catch {
       // Если это не input/textarea, получаем текстовое содержимое
-      return await codeElement.textContent() || '';
+      const text = await codeElement.textContent({ timeout: TIMEOUTS.ELEMENT_ACTION });
+      return text || '';
     }
   }
 }

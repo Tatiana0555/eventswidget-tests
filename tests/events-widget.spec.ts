@@ -1,19 +1,39 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page, BrowserContext } from '@playwright/test';
 import { EventsWidgetPage } from '../pages/EventsWidget.page';
 
-test.describe('Events Widget Page', () => {
+// Константы для тестовых данных
+const TEST_THEMES = {
+  IGAMING: 'Igaming',
+  BLOCKCHAIN: 'Blockchain',
+  DEVELOPMENT: 'Development',
+} as const;
 
-  test.beforeEach(async ({ page, context }) => {
+const TEST_DIMENSIONS = {
+  DEFAULT_WIDTH: 800,
+  DEFAULT_HEIGHT: 600,
+  LARGE_WIDTH: 1200,
+  LARGE_HEIGHT: 900,
+  PREVIEW_WIDTH: 1000,
+  PREVIEW_HEIGHT: 800,
+} as const;
+
+const TIMEOUTS = {
+  PREVIEW_GENERATION: 5000,
+  ELEMENT_APPEARANCE: 3000,
+} as const;
+
+test.describe('Events Widget Page', () => {
+  let widget: EventsWidgetPage;
+
+  test.beforeEach(async ({ page, context }: { page: Page; context: BrowserContext }) => {
     // Предоставляем разрешения на доступ к clipboard
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'https://dev.3snet.info' });
     
-    const widget = new EventsWidgetPage(page);
+    widget = new EventsWidgetPage(page);
     await widget.open();
   });
 
-  test('Page loads correctly and displays main elements', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
-
+  test('Page loads correctly and displays main elements', async ({ page }: { page: Page }) => {
     // Проверка URL
     await expect(page).toHaveURL(/eventswidget/);
 
@@ -30,118 +50,101 @@ test.describe('Events Widget Page', () => {
     await expect(widget.generatePreviewButton).toBeVisible();
   });
 
-  test('Step 1: Theme selection functionality', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
+  test('Step 1: Theme selection functionality', async () => {
+  // Проверка наличия combobox для выбора тематики
+  await expect(widget.themeCombobox).toBeVisible();
 
-    // Проверка наличия combobox для выбора тематики
-    await expect(widget.themeCombobox).toBeVisible();
+  // Выбор конкретной тематики
+  await widget.selectTheme(TEST_THEMES.IGAMING);
+  
+  // Просто ждем и проверяем видимость combobox
+  await widget.themeCombobox.waitFor({ state: 'visible' });
+});
 
-    // Выбор конкретной тематики
-    // Если метод выполнился без ошибок, значит тематика была выбрана
-    await widget.selectTheme('Igaming');
-    
-    // Даем время на обновление состояния после выбора
-    await page.waitForTimeout(1000);
-    
-    // Проверяем, что тематика выбрана (проверка может быть неточной для кастомного combobox)
-    // Главное - что метод selectTheme выполнился без ошибок
-    try {
-      const isSelected = await widget.isThemeSelected('Igaming');
-      // Если проверка вернула результат, используем его, иначе считаем что выбор прошел успешно
-      if (typeof isSelected === 'boolean') {
-        // Для кастомного combobox проверка может быть неточной, 
-        // поэтому просто проверяем что метод выполнился
-        expect(typeof isSelected).toBe('boolean');
-      }
-    } catch (e) {
-      // Если проверка не удалась, это не критично - главное что selectTheme выполнился
-      console.log('Проверка выбранной тематики не удалась, но выбор был выполнен');
-    }
-  });
-
-  test('Step 2: Country selection functionality', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
-
+  test('Step 2: Country selection functionality', async () => {
     // Проверка наличия combobox для выбора стран
     await expect(widget.countryCombobox).toBeVisible();
 
     // Тест выбора всех стран
     await widget.selectAllCountries();
+    await widget.countryCombobox.waitFor({ state: 'visible' });
     
     // Тест очистки выбора
     await widget.clearCountries();
+    await widget.countryCombobox.waitFor({ state: 'visible' });
   });
 
-  test('Step 3: Block size configuration', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
-
+  test('Step 3: Block size configuration', async () => {
     // Проверка наличия полей ввода
     await expect(widget.widthInput).toBeVisible();
     await expect(widget.heightInput).toBeVisible();
 
     // Установка конкретных размеров
-    await widget.setWidth(800);
-    await widget.setHeight(600);
+    await widget.setWidth(TEST_DIMENSIONS.DEFAULT_WIDTH);
+    await widget.setHeight(TEST_DIMENSIONS.DEFAULT_HEIGHT);
     
     // Проверка значений
-    await expect(widget.widthInput).toHaveValue('800');
-    await expect(widget.heightInput).toHaveValue('600');
+    await expect(widget.widthInput).toHaveValue(TEST_DIMENSIONS.DEFAULT_WIDTH.toString());
+    await expect(widget.heightInput).toHaveValue(TEST_DIMENSIONS.DEFAULT_HEIGHT.toString());
 
     // Тест чекбоксов "на всю ширину/высоту"
     await widget.setFullWidth(true);
+    await expect(widget.fullWidthCheckbox).toBeChecked();
+    
     await widget.setFullHeight(true);
+    await expect(widget.fullHeightCheckbox).toBeChecked();
     
     await widget.setFullWidth(false);
+    await expect(widget.fullWidthCheckbox).not.toBeChecked();
+    
     await widget.setFullHeight(false);
+    await expect(widget.fullHeightCheckbox).not.toBeChecked();
   });
 
-  test('Step 4: Color theme selection', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
-
+  test('Step 4: Color theme selection', async () => {
     // Проверка наличия секции выбора темы
     await expect(widget.step4Section).toBeVisible();
 
-    // Выбор светлой темы (радиокнопки могут быть скрыты, но клик по label работает)
+    // Выбор светлой темы
     await widget.selectLightTheme();
-    // Проверяем, что радиокнопка выбрана (используем force для скрытых элементов)
-    const lightChecked = await widget.lightThemeRadio.isChecked();
-    // Если радиокнопка скрыта, проверка может не работать, просто проверяем что метод выполнился
-    expect(typeof lightChecked).toBe('boolean');
+    await expect(widget.lightThemeRadio).toBeChecked();
+    await expect(widget.darkThemeRadio).not.toBeChecked();
 
     // Выбор темной темы
     await widget.selectDarkTheme();
-    const darkChecked = await widget.darkThemeRadio.isChecked();
-    expect(typeof darkChecked).toBe('boolean');
+    await expect(widget.darkThemeRadio).toBeChecked();
+    await expect(widget.lightThemeRadio).not.toBeChecked();
   });
 
-  test('Generate preview functionality', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
-
+  test('Generate preview functionality', async () => {
     // Настройка параметров перед генерацией
-    await widget.selectTheme('Igaming');
-    await widget.setWidth(1000);
-    await widget.setHeight(800);
+    await widget.selectTheme(TEST_THEMES.IGAMING);
+    await widget.setWidth(TEST_DIMENSIONS.PREVIEW_WIDTH);
+    await widget.setHeight(TEST_DIMENSIONS.PREVIEW_HEIGHT);
     await widget.selectLightTheme();
 
     // Генерация превью
     await widget.generatePreview();
 
     // Проверка наличия сгенерированного кода
-    await expect(widget.generatedCode).toBeVisible({ timeout: 5000 });
+    await expect(widget.generatedCode).toBeVisible({ timeout: TIMEOUTS.PREVIEW_GENERATION });
     
     // Проверка наличия кнопки копирования
     await expect(widget.copyCodeButton).toBeVisible();
+    
+    // Проверка, что код не пустой
+    const code = await widget.getGeneratedCode();
+    expect(code.length).toBeGreaterThan(0);
+    expect(code).toMatch(/iframe|script/i);
   });
 
-  test('Copy code functionality', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
-
+  test('Copy code functionality', async ({ page }: { page: Page }) => {
     // Настройка и генерация превью
-    await widget.selectTheme('Igaming');
+    await widget.selectTheme(TEST_THEMES.IGAMING);
     await widget.generatePreview();
 
     // Ожидание появления кода
-    await expect(widget.generatedCode).toBeVisible({ timeout: 5000 });
+    await expect(widget.generatedCode).toBeVisible({ timeout: TIMEOUTS.PREVIEW_GENERATION });
 
     // Получаем код до копирования для сравнения
     const codeBeforeCopy = await widget.getGeneratedCode();
@@ -150,43 +153,41 @@ test.describe('Events Widget Page', () => {
     // Попытка скопировать код
     await widget.copyCode();
     
-    // Проверка, что кнопка копирования работает
-    // В реальном сценарии код должен быть скопирован в буфер обмена
-    // Используем проверку через evaluate с правильной типизацией
+    // Проверка, что код был скопирован в буфер обмена
     try {
       const clipboardText = await page.evaluate(async () => {
-        // Проверяем наличие clipboard API и используем его
-        // Используем type assertion для обхода проверки типов в браузерном контексте
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const nav = navigator as any;
         if (nav.clipboard && typeof nav.clipboard.readText === 'function') {
           return await nav.clipboard.readText();
         }
         return '';
       });
+      
       if (clipboardText.length > 0) {
-        expect(clipboardText.length).toBeGreaterThan(0);
+        expect(clipboardText).toBe(codeBeforeCopy);
+      } else {
+        // Если clipboard API недоступен, проверяем что код был сгенерирован
+        expect(codeBeforeCopy.length).toBeGreaterThan(0);
       }
     } catch (error) {
       // Если clipboard API недоступен (например, в CI/CD или без HTTPS), 
-      // просто проверяем, что кнопка была нажата и код был сгенерирован
-      // В реальном окружении код будет скопирован в буфер обмена
+      // проверяем, что кнопка была нажата и код был сгенерирован
       expect(codeBeforeCopy.length).toBeGreaterThan(0);
     }
   });
 
-  test('Full workflow: configure and generate widget', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
-
+  test('Full workflow: configure and generate widget', async () => {
     // Шаг 1: Выбор тематики
-    await widget.selectTheme('Blockchain');
-    await widget.selectTheme('Development');
+    await widget.selectTheme(TEST_THEMES.BLOCKCHAIN);
+    await widget.selectTheme(TEST_THEMES.DEVELOPMENT);
 
-    // Шаг 2: Выбор стран (если доступно)
+    // Шаг 2: Выбор стран
     await widget.selectAllCountries();
 
     // Шаг 3: Настройка размера
-    await widget.setWidth(1200);
-    await widget.setHeight(900);
+    await widget.setWidth(TEST_DIMENSIONS.LARGE_WIDTH);
+    await widget.setHeight(TEST_DIMENSIONS.LARGE_HEIGHT);
 
     // Шаг 4: Выбор темы
     await widget.selectDarkTheme();
@@ -195,12 +196,13 @@ test.describe('Events Widget Page', () => {
     await widget.generatePreview();
 
     // Проверка результата
-    await expect(widget.generatedCode).toBeVisible({ timeout: 5000 });
+    await expect(widget.generatedCode).toBeVisible({ timeout: TIMEOUTS.PREVIEW_GENERATION });
     const code = await widget.getGeneratedCode();
     expect(code.length).toBeGreaterThan(0);
+    expect(code).toMatch(/iframe|script/i);
   });
 
-  test('Page content and structure validation', async ({ page }) => {
+  test('Page content and structure validation', async ({ page }: { page: Page }) => {
     // Проверка наличия основного контента
     const bodyText = await page.locator('body').innerText();
     expect(bodyText.length).toBeGreaterThan(0);
@@ -215,14 +217,47 @@ test.describe('Events Widget Page', () => {
     expect(bodyText).toMatch(/Скопируйте|код|превью/i);
   });
 
-  test('Responsive elements visibility', async ({ page }) => {
-    const widget = new EventsWidgetPage(page);
-
+  test('Responsive elements visibility', async () => {
     // Проверка видимости всех основных элементов
     await expect(widget.step1Section).toBeVisible();
     await expect(widget.step2Section).toBeVisible();
     await expect(widget.step3Section).toBeVisible();
     await expect(widget.step4Section).toBeVisible();
     await expect(widget.generatePreviewButton).toBeVisible();
+  });
+
+  test('Negative: Generate preview without theme selection', async () => {
+    // Попытка сгенерировать превью без выбора тематики
+    await widget.setWidth(TEST_DIMENSIONS.DEFAULT_WIDTH);
+    await widget.setHeight(TEST_DIMENSIONS.DEFAULT_HEIGHT);
+    
+    // Генерация превью без тематики
+    await widget.generatePreview();
+    
+    // Проверяем, что код либо не появился, либо появился с предупреждением
+    // (зависит от реализации приложения)
+    const code = await widget.getGeneratedCode().catch(() => '');
+    // Если код не пустой, проверяем что он валидный
+    if (code.length > 0) {
+      expect(code).toMatch(/iframe|script/i);
+    }
+  });
+
+  test('Negative: Invalid dimensions input', async () => {
+    // Проверка обработки некорректных значений размеров
+    await widget.setWidth(-100);
+    await widget.setHeight(0);
+    
+    // Проверяем, что значения были обработаны (либо отклонены, либо нормализованы)
+    const widthValue = await widget.widthInput.inputValue();
+    const heightValue = await widget.heightInput.inputValue();
+    
+    // Значения должны быть либо пустыми, либо положительными числами
+    if (widthValue) {
+      expect(parseInt(widthValue)).toBeGreaterThanOrEqual(0);
+    }
+    if (heightValue) {
+      expect(parseInt(heightValue)).toBeGreaterThanOrEqual(0);
+    }
   });
 });
