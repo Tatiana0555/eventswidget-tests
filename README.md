@@ -131,6 +131,22 @@ npm run report
 - `npm run ui` - запуск тестов с UI интерфейсом Playwright
 - `npm run report` - открытие HTML отчета о выполнении тестов
 
+## Запуск без настроек:
+
+PowerShell (Windows):
+
+```npm install; npx playwright install; Copy-Item -Path .env.example -Destination .env -Force; npm test```
+
+Unix / macOS (bash/zsh):
+
+```npm install && npx playwright install && cp .env.example .env && npm test```
+
+### Примечания:
+
+- Выполняйте команды из корня проекта (где находится package.json)
+- Требуется Node.js 16+
+- Команда выполняет: установку зависимостей, установку браузеров Playwright, копирование .env из .env.example и запуск тестов
+
 ## Конфигурация
 
 Проект настроен для работы с тестовой средой `https://dev.3snet.info`. Основные настройки находятся в файле `playwright.config.ts`:
